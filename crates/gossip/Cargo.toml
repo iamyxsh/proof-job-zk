@@ -1,0 +1,15 @@
+[package]
+name = "gossip"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+proof_core = { workspace = true }
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+futures = { workspace = true }
+bytes = { workspace = true }
+bincode = { workspace = true }
+
+[dev-dependencies]
+alloy-primitives = { workspace = true }
