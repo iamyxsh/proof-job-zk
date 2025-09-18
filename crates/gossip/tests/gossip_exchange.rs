@@ -1,13 +1,14 @@
 use std::time::Duration;
 
 use alloy_primitives::Address;
-use gossip::gossip::GossipNode;
+use gossip::gossip::{GossipConfig, GossipNode};
 use proof_core::{
     enums::{GossipMessage, JobStatus},
     gossip::GossipEnvelope,
     ids::{JobId, MessageId, PeerId},
     job::Job,
 };
+use tokio::time::{sleep, timeout};
 
 fn make_test_job() -> Job {
     Job {
@@ -20,52 +21,136 @@ fn make_test_job() -> Job {
     }
 }
 
+fn make_test_envelope() -> GossipEnvelope {
+    GossipEnvelope {
+        id: MessageId([0x01; 32]),
+        origin: PeerId([0xBB; 32]),
+        ttl: 3,
+        payload: GossipMessage::JobAvailable(make_test_job()),
+    }
+}
+
+fn config() -> GossipConfig {
+    GossipConfig::new("127.0.0.1:0".parse().unwrap())
+}
+
 #[tokio::test]
 async fn two_nodes_can_exchange_message() {
-    // Start node A on port 9000
-    let node_a = GossipNode::new("127.0.0.1:9000".parse().unwrap())
-        .await
-        .unwrap();
+    let node_a = GossipNode::new(config()).await.unwrap();
+    let addr_a = node_a.local_addr().unwrap();
     let mut rx_a = node_a.subscribe();
     tokio::spawn({
         let node = node_a.clone();
         async move { node.run().await }
     });
 
-    // Start node B on port 9001
-    let node_b = GossipNode::new("127.0.0.1:9001".parse().unwrap())
-        .await
-        .unwrap();
-    let _rx_b = node_b.subscribe();
+    let node_b = GossipNode::new(config()).await.unwrap();
     tokio::spawn({
         let node = node_b.clone();
         async move { node.run().await }
     });
 
-    // B connects to A
-    node_b
-        .connect("127.0.0.1:9000".parse().unwrap())
-        .await
-        .unwrap();
+    node_b.connect(addr_a).await.unwrap();
+    sleep(Duration::from_millis(100)).await;
 
-    // Give connection time to establish
-    tokio::time::sleep(Duration::from_millis(100)).await;
-
-    // B sends a message
-    let job = make_test_job();
-    let envelope = GossipEnvelope {
-        id: MessageId([0x01; 32]),
-        origin: PeerId([0xBB; 32]),
-        ttl: 3,
-        payload: GossipMessage::JobAvailable(job.clone()),
-    };
+    let envelope = make_test_envelope();
     node_b.send(envelope.clone()).await.unwrap();
 
-    // A receives it
-    let received = tokio::time::timeout(Duration::from_secs(1), rx_a.recv())
+    let received = timeout(Duration::from_secs(1), rx_a.recv())
         .await
         .unwrap()
         .unwrap();
 
     assert_eq!(received.id, envelope.id);
+}
+
+#[tokio::test]
+async fn message_propagates_through_relay() {
+    let node_a = GossipNode::new(config()).await.unwrap();
+    tokio::spawn({ let n = node_a.clone(); async move { n.run().await } });
+
+    let node_b = GossipNode::new(config()).await.unwrap();
+    let addr_b = node_b.local_addr().unwrap();
+    tokio::spawn({ let n = node_b.clone(); async move { n.run().await } });
+
+    let node_c = GossipNode::new(config()).await.unwrap();
+    let mut rx_c = node_c.subscribe();
+    tokio::spawn({ let n = node_c.clone(); async move { n.run().await } });
+
+    node_a.connect(addr_b).await.unwrap();
+    node_c.connect(addr_b).await.unwrap();
+    sleep(Duration::from_millis(100)).await;
+
+    let job = make_test_job();
+    node_a
+        .broadcast(GossipMessage::JobAvailable(job.clone()))
+        .await
+        .unwrap();
+
+    let received = timeout(Duration::from_secs(1), rx_c.recv())
+        .await
+        .unwrap()
+        .unwrap();
+
+    match &received.payload {
+        GossipMessage::JobAvailable(j) => assert_eq!(j.id, job.id),
+    }
+
+    assert_eq!(received.ttl, 2);
+}
+
+#[tokio::test]
+async fn duplicate_messages_are_dropped() {
+    let node_a = GossipNode::new(config()).await.unwrap();
+    tokio::spawn({ let n = node_a.clone(); async move { n.run().await } });
+
+    let node_b = GossipNode::new(config()).await.unwrap();
+    let addr_b = node_b.local_addr().unwrap();
+    let mut rx_b = node_b.subscribe();
+    tokio::spawn({ let n = node_b.clone(); async move { n.run().await } });
+
+    node_a.connect(addr_b).await.unwrap();
+    sleep(Duration::from_millis(100)).await;
+
+    let envelope = make_test_envelope();
+    node_a.send(envelope.clone()).await.unwrap();
+    node_a.send(envelope.clone()).await.unwrap();
+
+    let _first = timeout(Duration::from_millis(500), rx_b.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    let second = timeout(Duration::from_millis(500), rx_b.recv()).await;
+
+    assert!(second.is_err(), "should not receive duplicate");
+}
+
+#[tokio::test]
+async fn ttl_one_not_forwarded() {
+    let node_a = GossipNode::new(config()).await.unwrap();
+    tokio::spawn({ let n = node_a.clone(); async move { n.run().await } });
+
+    let node_b = GossipNode::new(config()).await.unwrap();
+    let addr_b = node_b.local_addr().unwrap();
+    let mut rx_b = node_b.subscribe();
+    tokio::spawn({ let n = node_b.clone(); async move { n.run().await } });
+
+    let node_c = GossipNode::new(config()).await.unwrap();
+    let mut rx_c = node_c.subscribe();
+    tokio::spawn({ let n = node_c.clone(); async move { n.run().await } });
+
+    node_a.connect(addr_b).await.unwrap();
+    node_c.connect(addr_b).await.unwrap();
+    sleep(Duration::from_millis(100)).await;
+
+    let mut envelope = make_test_envelope();
+    envelope.ttl = 1;
+    node_a.send(envelope).await.unwrap();
+
+    let _ = timeout(Duration::from_millis(500), rx_b.recv())
+        .await
+        .unwrap();
+
+    let result = timeout(Duration::from_millis(500), rx_c.recv()).await;
+    assert!(result.is_err(), "TTL=1 message should not reach C");
 }

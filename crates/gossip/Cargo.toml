@@ -10,6 +10,9 @@ tokio-util = { workspace = true }
 futures = { workspace = true }
 bytes = { workspace = true }
 bincode = { workspace = true }
+lru = { workspace = true }
+rand = { workspace = true }
+sha2 = { workspace = true }
 
 [dev-dependencies]
 alloy-primitives = { workspace = true }
