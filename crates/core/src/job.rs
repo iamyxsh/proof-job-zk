@@ -9,6 +9,7 @@ pub struct Job {
     pub job_status: JobStatus,
     pub owner: Address,
     pub payload: Vec<u8>,
+    pub reward: u128,
     pub created_at: u64,
     pub deadline: u64,
 }

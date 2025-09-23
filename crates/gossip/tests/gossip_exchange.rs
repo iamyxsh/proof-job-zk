@@ -16,6 +16,7 @@ fn make_test_job() -> Job {
         job_status: JobStatus::Pending,
         owner: Address::ZERO,
         payload: vec![1, 2, 3],
+        reward: 1000,
         created_at: 1000,
         deadline: 2000,
     }

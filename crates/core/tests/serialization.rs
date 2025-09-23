@@ -25,6 +25,7 @@ fn job_roundtrips_through_bincode() {
         job_status: JobStatus::Pending,
         owner: Address::ZERO,
         payload: vec![1, 2, 3],
+        reward: 1000,
         created_at: 1000,
         deadline: 2000,
     };
@@ -41,6 +42,7 @@ fn gossip_envelope_roundtrips_through_bincode() {
         job_status: JobStatus::Pending,
         owner: Address::ZERO,
         payload: vec![1, 2, 3],
+        reward: 1000,
         created_at: 1000,
         deadline: 2000,
     };
@@ -64,6 +66,7 @@ fn job_id_compiles_as_hashmap_key() {
         job_status: JobStatus::Pending,
         owner: Address::ZERO,
         payload: vec![],
+        reward: 0,
         created_at: 0,
         deadline: 0,
     };
