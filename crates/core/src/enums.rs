@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    ids::{PeerId, TxHash},
+    ids::{JobId, PeerId, TxHash},
     job::Job,
 };
 
@@ -18,4 +18,7 @@ pub enum JobStatus {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum GossipMessage {
     JobAvailable(Job),
+    ClaimJob { job_id: JobId, worker_id: PeerId },
+    ClaimAccepted { job_id: JobId, worker_id: PeerId },
+    ClaimRejected { job_id: JobId, reason: String },
 }

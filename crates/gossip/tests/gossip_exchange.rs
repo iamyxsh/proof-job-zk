@@ -95,6 +95,7 @@ async fn message_propagates_through_relay() {
 
     match &received.payload {
         GossipMessage::JobAvailable(j) => assert_eq!(j.id, job.id),
+        _ => panic!("expected JobAvailable message"),
     }
 
     assert_eq!(received.ttl, 2);

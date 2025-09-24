@@ -19,3 +19,4 @@ alloy-primitives = { workspace = true }
 [dev-dependencies]
 tower = { workspace = true }
 http-body-util = { workspace = true }
+alloy-primitives = { workspace = true }

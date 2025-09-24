@@ -59,6 +59,48 @@ fn gossip_envelope_roundtrips_through_bincode() {
 }
 
 #[test]
+fn claim_messages_roundtrip() {
+    let claim = GossipMessage::ClaimJob {
+        job_id: JobId([0xaa; 32]),
+        worker_id: PeerId([0xbb; 32]),
+    };
+    let bytes = bincode::serde::encode_to_vec(&claim, config::standard()).unwrap();
+    let (recovered, _): (GossipMessage, _) =
+        bincode::serde::decode_from_slice(&bytes, config::standard()).unwrap();
+    assert_eq!(claim, recovered);
+
+    let accepted = GossipMessage::ClaimAccepted {
+        job_id: JobId([0xaa; 32]),
+        worker_id: PeerId([0xbb; 32]),
+    };
+    let bytes = bincode::serde::encode_to_vec(&accepted, config::standard()).unwrap();
+    let (recovered, _): (GossipMessage, _) =
+        bincode::serde::decode_from_slice(&bytes, config::standard()).unwrap();
+    assert_eq!(accepted, recovered);
+
+    let rejected = GossipMessage::ClaimRejected {
+        job_id: JobId([0xaa; 32]),
+        reason: "test reason".to_string(),
+    };
+    let bytes = bincode::serde::encode_to_vec(&rejected, config::standard()).unwrap();
+    let (recovered, _): (GossipMessage, _) =
+        bincode::serde::decode_from_slice(&bytes, config::standard()).unwrap();
+    assert_eq!(rejected, recovered);
+}
+
+#[test]
+fn job_status_assigned_roundtrips() {
+    let status = JobStatus::Assigned {
+        worker: PeerId([0xcc; 32]),
+        assigned_at: 1234567890,
+    };
+    let bytes = bincode::serde::encode_to_vec(&status, config::standard()).unwrap();
+    let (recovered, _): (JobStatus, _) =
+        bincode::serde::decode_from_slice(&bytes, config::standard()).unwrap();
+    assert_eq!(status, recovered);
+}
+
+#[test]
 fn job_id_compiles_as_hashmap_key() {
     let mut map: HashMap<JobId, Job> = HashMap::new();
     let job = Job {

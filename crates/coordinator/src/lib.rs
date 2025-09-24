@@ -1,5 +1,6 @@
 pub mod api;
 pub mod config;
+pub mod gossip_handler;
 
 use std::sync::Arc;
 

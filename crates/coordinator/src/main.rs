@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use coordinator::api;
 use coordinator::config::CoordinatorConfig;
+use coordinator::gossip_handler::run_gossip_handler;
 use coordinator::AppState;
 use dashmap::DashMap;
 use gossip::gossip::{GossipConfig, GossipNode};
@@ -26,6 +27,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         gossip,
         config,
     });
+
+    let gossip_rx = state.gossip.subscribe();
+    tokio::spawn(run_gossip_handler(state.clone(), gossip_rx));
 
     let app = api::router(state);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:8080").await?;
