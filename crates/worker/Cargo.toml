@@ -1,0 +1,15 @@
+[package]
+name = "worker"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+proof_core = { workspace = true }
+gossip = { workspace = true }
+tokio = { workspace = true }
+rand = { workspace = true }
+
+[dev-dependencies]
+coordinator = { path = "../coordinator" }
+alloy-primitives = { workspace = true }
+dashmap = { workspace = true }
