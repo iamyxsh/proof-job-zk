@@ -74,13 +74,11 @@ impl Worker {
         }
 
         if worker_id == self.peer_id {
-            // We won — move job from Claiming to Assigned
             let old = std::mem::replace(&mut *status, WorkerStatus::Idle);
             if let WorkerStatus::Claiming { job } = old {
                 *status = WorkerStatus::Assigned { job };
             }
         } else {
-            // Someone else won — back to Idle
             *status = WorkerStatus::Idle;
         }
 

@@ -213,7 +213,6 @@ async fn coordinator_rejects_second_claim() {
     let job_id = JobId([0xbb; 32]);
     state.jobs.insert(job_id, make_test_job(job_id));
 
-    // First claim succeeds
     let worker_1 = PeerId([0x01; 32]);
     spy.broadcast(GossipMessage::ClaimJob {
         job_id,
@@ -236,7 +235,6 @@ async fn coordinator_rejects_second_claim() {
     .await
     .expect("timeout waiting for ClaimAccepted");
 
-    // Second claim should be rejected
     let worker_2 = PeerId([0x02; 32]);
     spy.broadcast(GossipMessage::ClaimJob {
         job_id,

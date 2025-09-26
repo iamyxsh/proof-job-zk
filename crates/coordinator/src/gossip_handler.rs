@@ -51,7 +51,6 @@ async fn handle_claim(
         .unwrap()
         .as_secs();
 
-    // Use entry API for atomic check-and-modify
     let claimed = match state.jobs.get_mut(&job_id) {
         None => {
             state

@@ -91,7 +91,6 @@ async fn worker_ignores_job_when_busy() {
     tokio::spawn({ let w = worker.clone(); async move { w.run().await } });
     sleep(Duration::from_millis(100)).await;
 
-    // First job — worker should claim and get assigned
     let job_id_1 = JobId([0xaa; 32]);
     let job_1 = make_test_job(job_id_1);
     coord_state.jobs.insert(job_id_1, job_1.clone());
@@ -103,7 +102,6 @@ async fn worker_ignores_job_when_busy() {
 
     sleep(Duration::from_millis(500)).await;
 
-    // Verify assigned to first job
     {
         let status = worker.status.read().await;
         assert!(
@@ -112,7 +110,6 @@ async fn worker_ignores_job_when_busy() {
         );
     }
 
-    // Second job — worker should ignore it
     let job_id_2 = JobId([0xbb; 32]);
     let job_2 = make_test_job(job_id_2);
     coord_state.jobs.insert(job_id_2, job_2.clone());
