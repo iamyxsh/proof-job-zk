@@ -1,0 +1,19 @@
+[package]
+name = "prover"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+proof_core = { workspace = true }
+methods = { path = "../methods" }
+
+risc0-zkvm = { version = "^3.0.5", features = ["std"] }
+tokio = { workspace = true }
+bincode = { workspace = true }
+thiserror = "1"
+tracing = "0.1"
+serde = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full", "macros"] }
+tracing-subscriber = "0.3"
