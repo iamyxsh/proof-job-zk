@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use contract_client::ContractClient;
 use coordinator::api;
 use coordinator::config::CoordinatorConfig;
 use coordinator::gossip_handler::run_gossip_handler;
@@ -9,10 +10,34 @@ use gossip::gossip::{GossipConfig, GossipNode};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let rpc_url = std::env::var("RPC_URL").ok();
+    let contract_address = std::env::var("CONTRACT_ADDRESS").ok();
+    let private_key = std::env::var("PRIVATE_KEY").ok();
+
     let config = CoordinatorConfig {
-        http_addr: "127.0.0.1:8080".parse()?,
-        gossip_addr: "127.0.0.1:9000".parse()?,
+        http_addr: std::env::var("HTTP_ADDR")
+            .unwrap_or_else(|_| "127.0.0.1:8080".to_string())
+            .parse()?,
+        gossip_addr: std::env::var("GOSSIP_ADDR")
+            .unwrap_or_else(|_| "127.0.0.1:9000".to_string())
+            .parse()?,
         default_deadline_secs: 300,
+        rpc_url: rpc_url.clone(),
+        contract_address: contract_address.clone(),
+        private_key: private_key.clone(),
+    };
+
+    let contract = match (&rpc_url, &contract_address, &private_key) {
+        (Some(rpc), Some(addr), Some(pk)) => {
+            let parsed_addr = addr.parse().map_err(|e| format!("invalid CONTRACT_ADDRESS: {e}"))?;
+            let client = ContractClient::new(rpc, parsed_addr, pk)?;
+            println!("Contract client initialized at {addr}");
+            Some(client)
+        }
+        _ => {
+            println!("No contract config provided, running without on-chain integration");
+            None
+        }
     };
 
     let gossip_config = GossipConfig::new(config.gossip_addr);
@@ -22,9 +47,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         async move { g.run().await }
     });
 
+    let http_addr = config.http_addr;
+
     let state = Arc::new(AppState {
         jobs: DashMap::new(),
         gossip,
+        contract,
         config,
     });
 
@@ -32,8 +60,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     tokio::spawn(run_gossip_handler(state.clone(), gossip_rx));
 
     let app = api::router(state);
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:8080").await?;
-    println!("Coordinator listening on 127.0.0.1:8080");
+    let listener = tokio::net::TcpListener::bind(http_addr).await?;
+    println!("Coordinator listening on {http_addr}");
     axum::serve(listener, app).await?;
 
     Ok(())

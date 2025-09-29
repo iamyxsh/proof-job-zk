@@ -62,6 +62,20 @@ async fn create_job(
         .unwrap()
         .as_secs();
 
+    let deadline = now + state.config.default_deadline_secs;
+
+    if let Some(ref contract) = state.contract {
+        contract
+            .submit_job(job_id.0, &payload, deadline, req.reward)
+            .await
+            .map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("on-chain submission failed: {e}"),
+                )
+            })?;
+    }
+
     let job = Job {
         id: job_id,
         job_status: JobStatus::Pending,
@@ -69,7 +83,7 @@ async fn create_job(
         payload,
         reward: req.reward,
         created_at: now,
-        deadline: now + state.config.default_deadline_secs,
+        deadline,
     };
 
     state.jobs.insert(job_id, job.clone());

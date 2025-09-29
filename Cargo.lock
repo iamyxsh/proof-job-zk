@@ -1638,6 +1638,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "contract-client"
+version = "0.1.0"
+dependencies = [
+ "alloy",
+ "alloy-primitives",
+ "thiserror 1.0.69",
+ "tracing",
+]
+
+[[package]]
 name = "convert_case"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1652,6 +1662,7 @@ version = "0.1.0"
 dependencies = [
  "alloy-primitives",
  "axum",
+ "contract-client",
  "core",
  "dashmap",
  "gossip",
@@ -1663,6 +1674,7 @@ dependencies = [
  "sha2",
  "tokio",
  "tower",
+ "tracing",
 ]
 
 [[package]]
