@@ -21,4 +21,5 @@ pub enum GossipMessage {
     ClaimJob { job_id: JobId, worker_id: PeerId },
     ClaimAccepted { job_id: JobId, worker_id: PeerId },
     ClaimRejected { job_id: JobId, reason: String },
+    JobCompleted { job_id: JobId, tx_hash: TxHash },
 }

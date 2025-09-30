@@ -4,6 +4,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use gossip::gossip::{GossipConfig, GossipNode};
+use prover::ProofBundle;
 use proof_core::ids::PeerId;
 use proof_core::job::Job;
 use tokio::sync::RwLock;
@@ -13,11 +14,12 @@ pub struct WorkerConfig {
     pub coordinator_addr: SocketAddr,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub enum WorkerStatus {
     Idle,
     Claiming { job: Job },
-    Assigned { job: Job },
+    Proving { job: Job },
+    ProofReady { job: Job, bundle: ProofBundle },
 }
 
 pub struct Worker {
@@ -54,7 +56,7 @@ impl Worker {
         loop {
             match rx.recv().await {
                 Ok(envelope) => {
-                    if let Err(e) = self.handle_message(envelope).await {
+                    if let Err(e) = self.clone().handle_message(envelope).await {
                         eprintln!("Error handling message: {}", e);
                     }
                 }

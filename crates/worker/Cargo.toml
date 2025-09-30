@@ -6,7 +6,9 @@ edition = "2021"
 [dependencies]
 proof_core = { workspace = true }
 gossip = { workspace = true }
+prover = { path = "../prover" }
 tokio = { workspace = true }
+tracing = "0.1"
 rand = { workspace = true }
 
 [dev-dependencies]
