@@ -81,7 +81,6 @@ impl Worker {
                 tracing::info!(?job_id, "claim accepted, starting proof");
                 drop(status);
 
-                // Spawn proving as a separate task so the worker stays responsive
                 let worker = Arc::clone(self);
                 let payload = job.payload.clone();
                 tokio::spawn(async move {
@@ -118,28 +117,36 @@ impl Worker {
     async fn run_proving(worker: Arc<Worker>, job_id: JobId, job: Job, payload: Vec<u8>) {
         tracing::info!(?job_id, "proving started");
 
-        match prover::prove(job_id, payload).await {
+        let bundle = match prover::prove(job_id, payload).await {
             Ok(bundle) => {
                 tracing::info!(
                     ?job_id,
                     receipt_size = bundle.receipt_bytes.len(),
                     "proving complete"
                 );
-
-                let mut status = worker.status.write().await;
-                if matches!(&*status, WorkerStatus::Proving { job: j } if j.id == job_id) {
-                    *status = WorkerStatus::ProofReady { job, bundle };
-                    tracing::info!(?job_id, "transitioned to ProofReady");
-                }
+                bundle
             }
             Err(e) => {
                 tracing::error!(?job_id, error = %e, "proving failed");
-
                 let mut status = worker.status.write().await;
                 if matches!(&*status, WorkerStatus::Proving { job: j } if j.id == job_id) {
                     *status = WorkerStatus::Idle;
                 }
+                return;
+            }
+        };
+
+        {
+            let mut status = worker.status.write().await;
+            if matches!(&*status, WorkerStatus::Proving { job: j } if j.id == job_id) {
+                *status = WorkerStatus::Submitting { job: job.clone() };
+                tracing::info!(?job_id, "transitioned to Submitting");
+            } else {
+                tracing::warn!(?job_id, "unexpected state after proving, aborting submission");
+                return;
             }
         }
+
+        worker.submit_proof_onchain(job, bundle).await;
     }
 }

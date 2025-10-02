@@ -7,11 +7,21 @@ edition = "2021"
 proof_core = { workspace = true }
 gossip = { workspace = true }
 prover = { path = "../prover" }
+contract-client = { workspace = true }
 tokio = { workspace = true }
 tracing = "0.1"
 rand = { workspace = true }
+alloy-primitives = { workspace = true }
+sha2 = { workspace = true }
+hex = { workspace = true }
+bincode = { workspace = true }
+risc0-zkvm = { version = "^3.0.5", features = ["std"] }
+thiserror = "1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [dev-dependencies]
 coordinator = { path = "../coordinator" }
 alloy-primitives = { workspace = true }
+alloy = { workspace = true }
 dashmap = { workspace = true }
+tracing-subscriber = "0.3"
