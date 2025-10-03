@@ -1668,6 +1668,7 @@ dependencies = [
  "gossip",
  "hex",
  "http-body-util",
+ "indexer",
  "rand 0.8.5",
  "serde",
  "serde_json",
@@ -1675,6 +1676,7 @@ dependencies = [
  "tokio",
  "tower",
  "tracing",
+ "tracing-subscriber 0.3.22",
 ]
 
 [[package]]
@@ -2796,6 +2798,21 @@ name = "include_bytes_aligned"
 version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4ee796ad498c8d9a1d68e477df8f754ed784ef875de1414ebdaf169f70a6a784"
+
+[[package]]
+name = "indexer"
+version = "0.1.0"
+dependencies = [
+ "alloy",
+ "alloy-primitives",
+ "contract-client",
+ "core",
+ "dashmap",
+ "hex",
+ "thiserror 1.0.69",
+ "tokio",
+ "tracing",
+]
 
 [[package]]
 name = "indexmap"

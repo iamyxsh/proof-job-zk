@@ -3,13 +3,13 @@ use std::time::Duration;
 use alloy_primitives::Address;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
-use coordinator::api::{self, CreateJobResponse};
+use coordinator::api::{self, CreateJobResponse, JobResponse, JobStatusResponse};
 use coordinator::gossip_handler::run_gossip_handler;
 use coordinator::setup_test_coordinator;
 use gossip::gossip::{GossipConfig, GossipNode};
 use http_body_util::BodyExt;
 use proof_core::enums::{GossipMessage, JobStatus};
-use proof_core::ids::{JobId, PeerId};
+use proof_core::ids::{JobId, PeerId, TxHash};
 use proof_core::job::Job;
 use tokio::time::{sleep, timeout};
 use tower::ServiceExt;
@@ -307,4 +307,176 @@ async fn coordinator_rejects_unknown_job() {
     .expect("timeout waiting for ClaimRejected");
 
     assert!(reason.contains("not found"));
+}
+
+#[tokio::test]
+async fn get_job_returns_job_details() {
+    let state = setup_test_coordinator().await;
+    let job_id = JobId([0xcc; 32]);
+    state.jobs.insert(job_id, make_test_job(job_id));
+
+    let app = api::router(state);
+    let uri = format!("/jobs/0x{}", hex::encode(job_id.0));
+
+    let response = app
+        .oneshot(Request::builder().uri(&uri).body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let resp: JobResponse = serde_json::from_slice(&body).unwrap();
+
+    assert_eq!(resp.reward, 1000);
+    assert_eq!(resp.payload, format!("0x{}", hex::encode(vec![1u8, 2, 3])));
+}
+
+#[tokio::test]
+async fn get_job_status_returns_pending() {
+    let state = setup_test_coordinator().await;
+    let job_id = JobId([0xdd; 32]);
+    state.jobs.insert(job_id, make_test_job(job_id));
+
+    let app = api::router(state);
+    let uri = format!("/jobs/0x{}/status", hex::encode(job_id.0));
+
+    let response = app
+        .oneshot(Request::builder().uri(&uri).body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let resp: JobStatusResponse = serde_json::from_slice(&body).unwrap();
+
+    match resp {
+        JobStatusResponse::Pending => {}
+        other => panic!("expected Pending, got {:?}", other),
+    }
+}
+
+#[tokio::test]
+async fn get_job_status_returns_completed_with_tx_hash() {
+    let state = setup_test_coordinator().await;
+    let job_id = JobId([0xee; 32]);
+    let tx_hash = TxHash([0x11; 32]);
+
+    let mut job = make_test_job(job_id);
+    job.job_status = JobStatus::Completed { tx_hash };
+    state.jobs.insert(job_id, job);
+
+    let app = api::router(state);
+    let uri = format!("/jobs/0x{}/status", hex::encode(job_id.0));
+
+    let response = app
+        .oneshot(Request::builder().uri(&uri).body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let resp: JobStatusResponse = serde_json::from_slice(&body).unwrap();
+
+    match resp {
+        JobStatusResponse::Completed { tx_hash: hash } => {
+            assert!(hash.starts_with("0x"));
+            assert_eq!(hash, format!("0x{}", hex::encode([0x11u8; 32])));
+        }
+        other => panic!("expected Completed, got {:?}", other),
+    }
+}
+
+#[tokio::test]
+async fn get_job_not_found_returns_404() {
+    let state = setup_test_coordinator().await;
+    let app = api::router(state);
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri(&format!("/jobs/0x{}", hex::encode([0xff; 32])))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn gossip_job_completed_updates_state() {
+    let state = setup_test_coordinator().await;
+    let gossip_addr = state.gossip.local_addr().unwrap();
+    tokio::spawn({ let g = state.gossip.clone(); async move { g.run().await } });
+    tokio::spawn(run_gossip_handler(state.clone(), state.gossip.subscribe()));
+
+    let spy_config = GossipConfig::new("127.0.0.1:0".parse().unwrap());
+    let spy = GossipNode::new(spy_config).await.unwrap();
+    tokio::spawn({ let s = spy.clone(); async move { s.run().await } });
+
+    spy.connect(gossip_addr).await.unwrap();
+    sleep(Duration::from_millis(100)).await;
+
+    let job_id = JobId([0xab; 32]);
+    state.jobs.insert(job_id, make_test_job(job_id));
+
+    let tx_hash = TxHash([0x99; 32]);
+    spy.broadcast(GossipMessage::JobCompleted { job_id, tx_hash })
+        .await
+        .unwrap();
+
+    sleep(Duration::from_millis(500)).await;
+
+    let job = state.jobs.get(&job_id).unwrap();
+    match &job.job_status {
+        JobStatus::Completed { tx_hash: hash } => {
+            assert_eq!(*hash, tx_hash);
+        }
+        other => panic!("expected Completed, got {:?}", other),
+    }
+}
+
+#[tokio::test]
+async fn gossip_job_completed_does_not_overwrite_existing_completion() {
+    let state = setup_test_coordinator().await;
+    let gossip_addr = state.gossip.local_addr().unwrap();
+    tokio::spawn({ let g = state.gossip.clone(); async move { g.run().await } });
+    tokio::spawn(run_gossip_handler(state.clone(), state.gossip.subscribe()));
+
+    let spy_config = GossipConfig::new("127.0.0.1:0".parse().unwrap());
+    let spy = GossipNode::new(spy_config).await.unwrap();
+    tokio::spawn({ let s = spy.clone(); async move { s.run().await } });
+
+    spy.connect(gossip_addr).await.unwrap();
+    sleep(Duration::from_millis(100)).await;
+
+    let job_id = JobId([0xac; 32]);
+    let original_tx = TxHash([0x11; 32]);
+    let mut job = make_test_job(job_id);
+    job.job_status = JobStatus::Completed {
+        tx_hash: original_tx,
+    };
+    state.jobs.insert(job_id, job);
+
+    let new_tx = TxHash([0x22; 32]);
+    spy.broadcast(GossipMessage::JobCompleted {
+        job_id,
+        tx_hash: new_tx,
+    })
+    .await
+    .unwrap();
+
+    sleep(Duration::from_millis(500)).await;
+
+    let job = state.jobs.get(&job_id).unwrap();
+    match &job.job_status {
+        JobStatus::Completed { tx_hash } => {
+            assert_eq!(*tx_hash, original_tx);
+        }
+        other => panic!("expected Completed, got {:?}", other),
+    }
 }

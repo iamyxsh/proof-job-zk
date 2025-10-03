@@ -13,7 +13,7 @@ use proof_core::job::Job;
 use crate::config::CoordinatorConfig;
 
 pub struct AppState {
-    pub jobs: DashMap<JobId, Job>,
+    pub jobs: Arc<DashMap<JobId, Job>>,
     pub gossip: GossipNode,
     pub contract: Option<ContractClient>,
     pub config: CoordinatorConfig,
@@ -34,7 +34,7 @@ pub async fn setup_test_coordinator() -> Arc<AppState> {
     };
 
     Arc::new(AppState {
-        jobs: DashMap::new(),
+        jobs: Arc::new(DashMap::new()),
         gossip,
         contract: None,
         config,

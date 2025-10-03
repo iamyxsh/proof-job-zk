@@ -1,5 +1,7 @@
 use std::sync::Arc;
+use std::time::Duration;
 
+use alloy_primitives::Address;
 use contract_client::ContractClient;
 use coordinator::api;
 use coordinator::config::CoordinatorConfig;
@@ -7,6 +9,7 @@ use coordinator::gossip_handler::run_gossip_handler;
 use coordinator::AppState;
 use dashmap::DashMap;
 use gossip::gossip::{GossipConfig, GossipNode};
+use indexer::{create_indexer, IndexerConfig};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -49,8 +52,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     let http_addr = config.http_addr;
 
+    let jobs = Arc::new(DashMap::new());
+
     let state = Arc::new(AppState {
-        jobs: DashMap::new(),
+        jobs: jobs.clone(),
         gossip,
         contract,
         config,
@@ -58,6 +63,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     let gossip_rx = state.gossip.subscribe();
     tokio::spawn(run_gossip_handler(state.clone(), gossip_rx));
+
+    if let (Some(rpc), Some(addr)) = (&state.config.rpc_url, &state.config.contract_address) {
+        let registry_address: Address = addr
+            .parse()
+            .expect("invalid CONTRACT_ADDRESS for indexer");
+        let indexer_config = IndexerConfig {
+            rpc_url: rpc.clone(),
+            registry_address,
+            poll_interval: Duration::from_secs(2),
+            start_block: None,
+        };
+        let indexer = create_indexer(indexer_config, jobs.clone())
+            .await
+            .expect("failed to start indexer");
+        tokio::spawn(indexer.run());
+        println!("Indexer started, polling {addr}");
+    }
 
     let app = api::router(state);
     let listener = tokio::net::TcpListener::bind(http_addr).await?;

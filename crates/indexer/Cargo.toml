@@ -1,0 +1,20 @@
+[package]
+name = "indexer"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+proof_core = { workspace = true }
+contract-client = { workspace = true }
+alloy = { workspace = true }
+alloy-primitives = { workspace = true }
+tokio = { workspace = true }
+dashmap = { workspace = true }
+hex = { workspace = true }
+tracing = "0.1"
+thiserror = "1"
+
+[dev-dependencies]
+contract-client = { workspace = true }
+alloy-primitives = { workspace = true }
+hex = { workspace = true }

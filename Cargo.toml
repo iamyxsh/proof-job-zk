@@ -24,3 +24,4 @@ http-body-util = "0.1"
 gossip = { path = "crates/gossip" }
 proof_core = { path = "crates/core", package = "core" }
 contract-client = { path = "crates/contract-client" }
+indexer = { path = "crates/indexer" }

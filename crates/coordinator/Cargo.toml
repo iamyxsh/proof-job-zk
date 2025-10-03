@@ -16,7 +16,9 @@ sha2 = { workspace = true }
 rand = { workspace = true }
 alloy-primitives = { workspace = true }
 contract-client = { workspace = true }
+indexer = { workspace = true }
 tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [dev-dependencies]
 tower = { workspace = true }

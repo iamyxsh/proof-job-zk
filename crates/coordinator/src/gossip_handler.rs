@@ -3,7 +3,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use proof_core::enums::{GossipMessage, JobStatus};
 use proof_core::gossip::GossipEnvelope;
-use proof_core::ids::{JobId, PeerId};
+use proof_core::ids::{JobId, PeerId, TxHash};
 use tokio::sync::broadcast;
 
 use crate::AppState;
@@ -36,6 +36,10 @@ async fn process_message(
     match envelope.payload {
         GossipMessage::ClaimJob { job_id, worker_id } => {
             handle_claim(state, job_id, worker_id).await
+        }
+        GossipMessage::JobCompleted { job_id, tx_hash } => {
+            handle_job_completed(state, job_id, tx_hash);
+            Ok(())
         }
         _ => Ok(()),
     }
@@ -91,4 +95,22 @@ async fn handle_claim(
     }
 
     Ok(())
+}
+
+fn handle_job_completed(state: &AppState, job_id: JobId, tx_hash: TxHash) {
+    tracing::info!(
+        job_id = hex::encode(job_id.0),
+        tx_hash = hex::encode(tx_hash.0),
+        "received JobCompleted via gossip"
+    );
+
+    state.jobs.entry(job_id).and_modify(|job| {
+        if !matches!(job.job_status, JobStatus::Completed { .. }) {
+            job.job_status = JobStatus::Completed { tx_hash };
+            tracing::info!(
+                job_id = hex::encode(job_id.0),
+                "updated job status to Completed (from gossip)"
+            );
+        }
+    });
 }
