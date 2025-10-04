@@ -1,5 +1,4 @@
 use prover::ProofBundle;
-use sha2::{Digest, Sha256};
 
 #[derive(Debug, thiserror::Error)]
 pub enum ProofExtractionError {
@@ -8,9 +7,8 @@ pub enum ProofExtractionError {
 }
 
 pub struct ProofComponents {
-    pub result: Vec<u8>,
+    pub journal: Vec<u8>,
     pub seal: Vec<u8>,
-    pub journal_digest: [u8; 32],
 }
 
 pub fn extract_proof_components(
@@ -28,11 +26,10 @@ pub fn extract_proof_components(
         }
     };
 
-    let journal_digest: [u8; 32] = Sha256::digest(&receipt.journal.bytes).into();
+    let journal = receipt.journal.bytes.clone();
 
     Ok(ProofComponents {
-        result: bundle.output.result.clone(),
+        journal,
         seal,
-        journal_digest,
     })
 }

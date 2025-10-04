@@ -10,7 +10,7 @@ sol! {
     #[sol(rpc)]
     contract JobRegistry {
         function submitJob(bytes32 jobId, bytes calldata payload, uint256 deadline) external payable;
-        function submitProof(bytes32 jobId, bytes calldata result, bytes calldata seal, bytes32 journalDigest) external;
+        function submitProof(bytes32 jobId, bytes calldata journal, bytes calldata seal) external;
         function completed(bytes32 jobId) external view returns (bool);
 
         event JobSubmitted(bytes32 indexed jobId, address indexed owner, uint256 reward, uint256 deadline);
@@ -92,9 +92,8 @@ impl ContractClient {
     pub async fn submit_proof(
         &self,
         job_id: [u8; 32],
-        result: &[u8],
+        journal: &[u8],
         seal: &[u8],
-        journal_digest: [u8; 32],
     ) -> Result<FixedBytes<32>, ContractError> {
         let wallet = EthereumWallet::from(self.signer.clone());
         let provider = ProviderBuilder::new()
@@ -104,9 +103,8 @@ impl ContractClient {
 
         let tx = contract.submitProof(
             FixedBytes::from(job_id),
-            Bytes::copy_from_slice(result),
+            Bytes::copy_from_slice(journal),
             Bytes::copy_from_slice(seal),
-            FixedBytes::from(journal_digest),
         );
 
         let pending_tx = tx

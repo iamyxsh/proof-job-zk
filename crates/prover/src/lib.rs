@@ -60,10 +60,26 @@ fn prove_sync(job_id: JobId, data: Vec<u8>) -> Result<ProofBundle, ProverError> 
 
     tracing::debug!(?job_id, "proof generated, decoding journal");
 
-    let output: JobOutput = receipt
-        .journal
-        .decode()
-        .map_err(|e| ProverError::JournalDecodeFailed(e.to_string()))?;
+    // Journal layout (raw bytes committed by guest):
+    //   [0..32)   job_id
+    //   [32..64)  payload_hash  (sha256 of input data)
+    //   [64..)    result
+    let journal = &receipt.journal.bytes;
+    if journal.len() < 64 {
+        return Err(ProverError::JournalDecodeFailed(
+            format!("journal too short: {} bytes (expected >= 64)", journal.len()),
+        ));
+    }
+
+    let decoded_job_id = JobId(journal[0..32].try_into().unwrap());
+    let payload_hash: [u8; 32] = journal[32..64].try_into().unwrap();
+    let result = journal[64..].to_vec();
+
+    let output = JobOutput {
+        job_id: decoded_job_id,
+        payload_hash,
+        result,
+    };
 
     let receipt_bytes = bincode::serde::encode_to_vec(&receipt, bincode::config::standard())
         .map_err(|e| ProverError::SerializationFailed(e.to_string()))?;
@@ -101,6 +117,7 @@ pub fn guest_image_id() -> [u32; 8] {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use sha2::{Digest, Sha256};
 
     #[tokio::test]
     async fn prove_returns_valid_bundle() {
@@ -109,10 +126,13 @@ mod tests {
         let job_id = JobId([0xaa; 32]);
         let data = 10u64.to_le_bytes().to_vec();
 
-        let bundle = prove(job_id, data).await.expect("proving failed");
+        let bundle = prove(job_id, data.clone()).await.expect("proving failed");
 
         assert_eq!(bundle.job_id, job_id);
         assert_eq!(bundle.output.job_id, job_id);
+
+        let expected_payload_hash: [u8; 32] = Sha256::digest(&data).into();
+        assert_eq!(bundle.output.payload_hash, expected_payload_hash);
 
         let result = u64::from_le_bytes(
             bundle.output.result[..8].try_into().unwrap(),

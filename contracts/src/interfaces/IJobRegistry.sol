@@ -24,6 +24,9 @@ interface IJobRegistry {
     error DeadlinePassed();
     error InsufficientReward();
     error TransferFailed();
+    error InvalidJournal();
+    error JobIdMismatch();
+    error PayloadMismatch();
 
     function submitJob(
         bytes32 jobId,
@@ -33,9 +36,8 @@ interface IJobRegistry {
 
     function submitProof(
         bytes32 jobId,
-        bytes calldata result,
-        bytes calldata seal,
-        bytes32 journalDigest
+        bytes calldata journal,
+        bytes calldata seal
     ) external;
 
     function expireJob(bytes32 jobId) external;

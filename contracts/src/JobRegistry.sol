@@ -46,15 +46,29 @@ contract JobRegistry is IJobRegistry {
 
     function submitProof(
         bytes32 jobId,
-        bytes calldata result,
-        bytes calldata seal,
-        bytes32 journalDigest
+        bytes calldata journal,
+        bytes calldata seal
     ) external {
         Job storage job = jobs[jobId];
 
         if (!job.exists) revert JobNotFound();
         if (completed[jobId]) revert JobAlreadyCompleted();
+        if (block.timestamp > job.deadline) revert DeadlinePassed();
 
+        // Journal layout (raw bytes committed by guest):
+        //   [0..32)   job_id
+        //   [32..64)  payload_hash  (sha256 of input data)
+        //   [64..)    result
+        if (journal.length < 64) revert InvalidJournal();
+
+        bytes32 journalJobId = bytes32(journal[0:32]);
+        bytes32 journalPayloadHash = bytes32(journal[32:64]);
+        bytes memory result = journal[64:];
+
+        if (journalJobId != jobId) revert JobIdMismatch();
+        if (journalPayloadHash != sha256(job.payload)) revert PayloadMismatch();
+
+        bytes32 journalDigest = sha256(journal);
         verifier.verify(seal, imageId, journalDigest);
 
         completed[jobId] = true;

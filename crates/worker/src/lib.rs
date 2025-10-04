@@ -112,7 +112,7 @@ impl Worker {
 
         tracing::info!(
             ?job_id,
-            result_len = components.result.len(),
+            journal_len = components.journal.len(),
             seal_len = components.seal.len(),
             "submitting proof on-chain"
         );
@@ -121,9 +121,8 @@ impl Worker {
             .chain
             .submit_proof(
                 job_id.0,
-                &components.result,
+                &components.journal,
                 &components.seal,
-                components.journal_digest,
             )
             .await
         {

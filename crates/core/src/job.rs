@@ -23,6 +23,6 @@ pub struct JobInput {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct JobOutput {
     pub job_id: JobId,
+    pub payload_hash: [u8; 32],
     pub result: Vec<u8>,
-    pub result_hash: [u8; 32],
 }

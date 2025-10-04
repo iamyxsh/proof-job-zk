@@ -41,6 +41,8 @@ pub struct CreateJobRequest {
 #[derive(Serialize, Deserialize)]
 pub struct CreateJobResponse {
     pub job_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tx_hash: Option<String>,
 }
 
 async fn create_job(
@@ -67,8 +69,9 @@ async fn create_job(
 
     let deadline = now + state.config.default_deadline_secs;
 
+    let mut submit_tx_hash: Option<String> = None;
     if let Some(ref contract) = state.contract {
-        contract
+        let tx = contract
             .submit_job(job_id.0, &payload, deadline, req.reward)
             .await
             .map_err(|e| {
@@ -77,6 +80,7 @@ async fn create_job(
                     format!("on-chain submission failed: {e}"),
                 )
             })?;
+        submit_tx_hash = Some(format!("0x{}", hex::encode(tx.0)));
     }
 
     let job = Job {
@@ -99,6 +103,7 @@ async fn create_job(
 
     Ok(Json(CreateJobResponse {
         job_id: format!("0x{}", hex::encode(job_id.0)),
+        tx_hash: submit_tx_hash,
     }))
 }
 

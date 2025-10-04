@@ -38,7 +38,7 @@ async fn process_message(
             handle_claim(state, job_id, worker_id).await
         }
         GossipMessage::JobCompleted { job_id, tx_hash } => {
-            handle_job_completed(state, job_id, tx_hash);
+            handle_job_completed(state, job_id, tx_hash).await;
             Ok(())
         }
         _ => Ok(()),
@@ -97,19 +97,46 @@ async fn handle_claim(
     Ok(())
 }
 
-fn handle_job_completed(state: &AppState, job_id: JobId, tx_hash: TxHash) {
+async fn handle_job_completed(state: &AppState, job_id: JobId, tx_hash: TxHash) {
     tracing::info!(
         job_id = hex::encode(job_id.0),
         tx_hash = hex::encode(tx_hash.0),
-        "received JobCompleted via gossip"
+        "received JobCompleted via gossip, verifying on-chain"
     );
+
+    // If we have a chain client, verify the completion on-chain before trusting gossip
+    if let Some(ref contract) = state.contract {
+        match contract.is_completed(job_id.0).await {
+            Ok(true) => {
+                tracing::info!(
+                    job_id = hex::encode(job_id.0),
+                    "on-chain verification confirmed, marking completed"
+                );
+            }
+            Ok(false) => {
+                tracing::warn!(
+                    job_id = hex::encode(job_id.0),
+                    "gossip claimed completion but job is NOT completed on-chain, ignoring"
+                );
+                return;
+            }
+            Err(e) => {
+                tracing::warn!(
+                    job_id = hex::encode(job_id.0),
+                    error = %e,
+                    "failed to verify completion on-chain, ignoring gossip completion"
+                );
+                return;
+            }
+        }
+    }
 
     state.jobs.entry(job_id).and_modify(|job| {
         if !matches!(job.job_status, JobStatus::Completed { .. }) {
             job.job_status = JobStatus::Completed { tx_hash };
             tracing::info!(
                 job_id = hex::encode(job_id.0),
-                "updated job status to Completed (from gossip)"
+                "updated job status to Completed (gossip + chain-verified)"
             );
         }
     });

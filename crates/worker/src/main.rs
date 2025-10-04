@@ -1,10 +1,14 @@
 use alloy_primitives::Address;
+use tracing_subscriber::EnvFilter;
 use worker::{Worker, WorkerConfig};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     tracing_subscriber::fmt()
-        .with_env_filter("worker=debug,prover=info,gossip=info")
+        .with_env_filter(
+            EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| EnvFilter::new("worker=debug,prover=info,gossip=info")),
+        )
         .init();
 
     let registry_address: Address = std::env::var("REGISTRY_ADDRESS")
@@ -14,15 +18,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     let rpc_url = std::env::var("RPC_URL").unwrap_or_else(|_| "http://127.0.0.1:8545".to_string());
 
-    let private_key = std::env::var("WORKER_PRIVATE_KEY").unwrap_or_else(|_| {
-        "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d".to_string()
-    });
+    let private_key = std::env::var("PRIVATE_KEY")
+        .or_else(|_| std::env::var("WORKER_PRIVATE_KEY"))
+        .unwrap_or_else(|_| {
+            "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d".to_string()
+        });
+
+    let gossip_port = std::env::var("GOSSIP_PORT").unwrap_or_else(|_| "9100".to_string());
 
     let gossip_addr = std::env::var("GOSSIP_ADDR")
-        .unwrap_or_else(|_| "127.0.0.1:9100".to_string())
+        .unwrap_or_else(|_| format!("127.0.0.1:{}", gossip_port))
         .parse()?;
 
-    let coordinator_addr = std::env::var("COORDINATOR_ADDR")
+    let coordinator_addr = std::env::var("COORDINATOR_GOSSIP")
+        .or_else(|_| std::env::var("COORDINATOR_ADDR"))
         .unwrap_or_else(|_| "127.0.0.1:9000".to_string())
         .parse()?;
 

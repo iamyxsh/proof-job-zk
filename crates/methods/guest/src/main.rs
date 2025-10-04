@@ -1,17 +1,11 @@
 use risc0_zkvm::guest::env;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
 #[derive(Serialize, Deserialize)]
 pub struct JobInput {
     pub job_id: [u8; 32],
     pub data: Vec<u8>,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct JobOutput {
-    pub job_id: [u8; 32],
-    pub result: Vec<u8>,
-    pub result_hash: [u8; 32],
 }
 
 fn main() {
@@ -26,18 +20,17 @@ fn main() {
     };
 
     let fib_result = fibonacci(n);
-
     let result = fib_result.to_le_bytes().to_vec();
 
-    let mut result_hash = [0u8; 32];
-    result_hash[..result.len().min(32)].copy_from_slice(&result[..result.len().min(32)]);
+    let payload_hash: [u8; 32] = Sha256::digest(&input.data).into();
 
-    let output = JobOutput {
-        job_id: input.job_id,
-        result,
-        result_hash,
-    };
-    env::commit(&output);
+    // Journal layout (raw bytes):
+    //   [0..32)   job_id
+    //   [32..64)  payload_hash  (sha256 of input data)
+    //   [64..)    result        (variable length)
+    env::commit_slice(&input.job_id);
+    env::commit_slice(&payload_hash);
+    env::commit_slice(&result);
 }
 
 fn fibonacci(n: u64) -> u64 {

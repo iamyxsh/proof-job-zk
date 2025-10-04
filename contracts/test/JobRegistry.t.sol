@@ -24,6 +24,16 @@ contract JobRegistryTest is Test {
         vm.deal(worker, 1 ether);
     }
 
+    // Helper: build a valid journal for a given jobId and payload
+    function _buildJournal(
+        bytes32 jobId,
+        bytes memory payload,
+        bytes memory result
+    ) internal pure returns (bytes memory) {
+        bytes32 payloadHash = sha256(payload);
+        return abi.encodePacked(jobId, payloadHash, result);
+    }
+
     function test_submitJob_success() public {
         bytes memory payload = hex"0a00000000000000";
         uint256 deadline = block.timestamp + 1 hours;
@@ -100,13 +110,13 @@ contract JobRegistryTest is Test {
         registry.submitJob{value: reward}(JOB_ID, payload, deadline);
 
         bytes memory result = hex"3700000000000000";
+        bytes memory journal = _buildJournal(JOB_ID, payload, result);
         bytes memory seal = hex"deadbeef";
-        bytes32 journalDigest = keccak256(abi.encodePacked("journal"));
 
         uint256 workerBalanceBefore = worker.balance;
 
         vm.prank(worker);
-        registry.submitProof(JOB_ID, result, seal, journalDigest);
+        registry.submitProof(JOB_ID, journal, seal);
 
         assertEq(worker.balance, workerBalanceBefore + reward);
 
@@ -122,20 +132,21 @@ contract JobRegistryTest is Test {
         registry.submitJob{value: 1 ether}(JOB_ID, payload, deadline);
 
         bytes memory result = hex"3700000000000000";
+        bytes memory journal = _buildJournal(JOB_ID, payload, result);
         bytes memory seal = hex"deadbeef";
-        bytes32 journalDigest = keccak256(abi.encodePacked("journal"));
 
         vm.expectEmit(true, true, false, true);
         emit IJobRegistry.JobCompleted(JOB_ID, worker, result);
 
         vm.prank(worker);
-        registry.submitProof(JOB_ID, result, seal, journalDigest);
+        registry.submitProof(JOB_ID, journal, seal);
     }
 
     function test_submitProof_revertIfJobNotFound() public {
+        bytes memory journal = _buildJournal(JOB_ID, hex"0a", hex"37");
         vm.expectRevert(IJobRegistry.JobNotFound.selector);
         vm.prank(worker);
-        registry.submitProof(JOB_ID, hex"37", hex"deadbeef", bytes32(0));
+        registry.submitProof(JOB_ID, journal, hex"deadbeef");
     }
 
     function test_submitProof_revertIfAlreadyCompleted() public {
@@ -145,12 +156,61 @@ contract JobRegistryTest is Test {
         vm.prank(owner);
         registry.submitJob{value: 1 ether}(JOB_ID, payload, deadline);
 
+        bytes memory journal = _buildJournal(JOB_ID, payload, hex"37");
+
         vm.prank(worker);
-        registry.submitProof(JOB_ID, hex"37", hex"deadbeef", bytes32(0));
+        registry.submitProof(JOB_ID, journal, hex"deadbeef");
 
         vm.expectRevert(IJobRegistry.JobAlreadyCompleted.selector);
         vm.prank(worker);
-        registry.submitProof(JOB_ID, hex"37", hex"deadbeef", bytes32(0));
+        registry.submitProof(JOB_ID, journal, hex"deadbeef");
+    }
+
+    function test_submitProof_revertIfJournalTooShort() public {
+        bytes memory payload = hex"0a00000000000000";
+        uint256 deadline = block.timestamp + 1 hours;
+
+        vm.prank(owner);
+        registry.submitJob{value: 1 ether}(JOB_ID, payload, deadline);
+
+        // Journal shorter than 64 bytes
+        bytes memory shortJournal = hex"aabbccdd";
+
+        vm.expectRevert(IJobRegistry.InvalidJournal.selector);
+        vm.prank(worker);
+        registry.submitProof(JOB_ID, shortJournal, hex"deadbeef");
+    }
+
+    function test_submitProof_revertIfJobIdMismatch() public {
+        bytes memory payload = hex"0a00000000000000";
+        uint256 deadline = block.timestamp + 1 hours;
+
+        vm.prank(owner);
+        registry.submitJob{value: 1 ether}(JOB_ID, payload, deadline);
+
+        // Build journal with a different job ID
+        bytes32 wrongJobId = bytes32(uint256(0xdeadbeef));
+        bytes memory journal = _buildJournal(wrongJobId, payload, hex"37");
+
+        vm.expectRevert(IJobRegistry.JobIdMismatch.selector);
+        vm.prank(worker);
+        registry.submitProof(JOB_ID, journal, hex"deadbeef");
+    }
+
+    function test_submitProof_revertIfPayloadMismatch() public {
+        bytes memory payload = hex"0a00000000000000";
+        uint256 deadline = block.timestamp + 1 hours;
+
+        vm.prank(owner);
+        registry.submitJob{value: 1 ether}(JOB_ID, payload, deadline);
+
+        // Build journal with a different payload hash (wrong payload)
+        bytes memory wrongPayload = hex"ff00000000000000";
+        bytes memory journal = _buildJournal(JOB_ID, wrongPayload, hex"37");
+
+        vm.expectRevert(IJobRegistry.PayloadMismatch.selector);
+        vm.prank(worker);
+        registry.submitProof(JOB_ID, journal, hex"deadbeef");
     }
 
     function test_expireJob_success() public {
@@ -197,5 +257,22 @@ contract JobRegistryTest is Test {
 
         vm.expectRevert(IJobRegistry.JobNotExpired.selector);
         registry.expireJob(JOB_ID);
+    }
+
+    function test_submitProof_revertIfDeadlinePassed() public {
+        bytes memory payload = hex"0a00000000000000";
+        uint256 deadline = block.timestamp + 1 hours;
+
+        vm.prank(owner);
+        registry.submitJob{value: 1 ether}(JOB_ID, payload, deadline);
+
+        // Warp past the deadline
+        vm.warp(deadline + 1);
+
+        bytes memory journal = _buildJournal(JOB_ID, payload, hex"37");
+
+        vm.expectRevert(IJobRegistry.DeadlinePassed.selector);
+        vm.prank(worker);
+        registry.submitProof(JOB_ID, journal, hex"deadbeef");
     }
 }

@@ -217,17 +217,23 @@ impl GossipNode {
                     result = framed.next() => {
                         match result {
                             Some(Ok(bytes)) => {
-                                let (envelope, _): (GossipEnvelope, _) =
-                                    bincode::serde::decode_from_slice(&bytes, bincode::config::standard())
-                                        .expect("failed to decode envelope");
-                                let _ = incoming_tx.send((envelope, conn_id)).await;
+                                match bincode::serde::decode_from_slice::<GossipEnvelope, _>(&bytes, bincode::config::standard()) {
+                                    Ok((envelope, _)) => {
+                                        let _ = incoming_tx.send((envelope, conn_id)).await;
+                                    }
+                                    Err(_) => {
+                                        // Malformed frame — drop this connection
+                                        break;
+                                    }
+                                }
                             }
                             _ => break,
                         }
                     }
                     Some(envelope) = outgoing_rx.recv() => {
-                        let bytes = bincode::serde::encode_to_vec(&envelope, bincode::config::standard())
-                            .expect("failed to encode envelope");
+                        let Ok(bytes) = bincode::serde::encode_to_vec(&envelope, bincode::config::standard()) else {
+                            break;
+                        };
                         if framed.send(bytes.into()).await.is_err() {
                             break;
                         }
