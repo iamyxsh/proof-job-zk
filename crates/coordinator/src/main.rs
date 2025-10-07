@@ -6,8 +6,8 @@ use contract_client::ContractClient;
 use coordinator::api;
 use coordinator::config::CoordinatorConfig;
 use coordinator::gossip_handler::run_gossip_handler;
+use coordinator::persistence;
 use coordinator::AppState;
-use dashmap::DashMap;
 use gossip::gossip::{GossipConfig, GossipNode};
 use indexer::{create_indexer, IndexerConfig};
 use tracing_subscriber::EnvFilter;
@@ -65,7 +65,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     let http_addr = config.http_addr;
 
-    let jobs = Arc::new(DashMap::new());
+    let snapshot_path = persistence::snapshot_path();
+    let jobs = persistence::load_jobs(&snapshot_path);
 
     let state = Arc::new(AppState {
         jobs: jobs.clone(),
@@ -73,6 +74,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         contract,
         config,
     });
+
+    // Persist job state to disk every 5 seconds
+    persistence::spawn_snapshot_task(jobs.clone(), snapshot_path, Duration::from_secs(5));
 
     let gossip_rx = state.gossip.subscribe();
     tokio::spawn(run_gossip_handler(state.clone(), gossip_rx));

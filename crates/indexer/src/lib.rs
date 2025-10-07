@@ -174,28 +174,37 @@ impl<P: Provider + Clone> Indexer<P> {
     }
 
     fn handle_job_completed(&self, job_id: JobId, tx_hash: TxHash) {
-        if !self.jobs.contains_key(&job_id) {
-            tracing::warn!(
-                job_id = hex::encode(job_id.0),
-                "received JobCompleted for unknown job"
-            );
-            return;
-        }
-
-        self.jobs.entry(job_id).and_modify(|job| {
-            if !matches!(job.job_status, JobStatus::Completed { .. }) {
+        self.jobs
+            .entry(job_id)
+            .and_modify(|job| {
+                if !matches!(job.job_status, JobStatus::Completed { .. }) {
+                    tracing::info!(
+                        job_id = hex::encode(job_id.0),
+                        "updating job status to Completed (from indexer)"
+                    );
+                    job.job_status = JobStatus::Completed { tx_hash };
+                } else {
+                    tracing::debug!(
+                        job_id = hex::encode(job_id.0),
+                        "job already completed, skipping"
+                    );
+                }
+            })
+            .or_insert_with(|| {
                 tracing::info!(
                     job_id = hex::encode(job_id.0),
-                    "updating job status to Completed (from indexer)"
+                    "inserting completed job discovered on-chain"
                 );
-                job.job_status = JobStatus::Completed { tx_hash };
-            } else {
-                tracing::debug!(
-                    job_id = hex::encode(job_id.0),
-                    "job already completed, skipping"
-                );
-            }
-        });
+                Job {
+                    id: job_id,
+                    job_status: JobStatus::Completed { tx_hash },
+                    owner: Address::ZERO,
+                    payload: Vec::new(),
+                    reward: 0,
+                    created_at: 0,
+                    deadline: 0,
+                }
+            });
     }
 
     fn handle_job_expired(&self, job_id: JobId) {
