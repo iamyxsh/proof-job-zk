@@ -9,14 +9,11 @@ use tokio::time::interval;
 
 const DEFAULT_SNAPSHOT_FILE: &str = "coordinator_jobs.json";
 
-/// Resolve the snapshot path from `DATA_DIR` env or current directory.
 pub fn snapshot_path() -> PathBuf {
     let dir = std::env::var("DATA_DIR").unwrap_or_else(|_| ".".to_string());
     Path::new(&dir).join(DEFAULT_SNAPSHOT_FILE)
 }
 
-/// Load jobs from the snapshot file. Returns an empty map if the file
-/// doesn't exist or can't be parsed (first run).
 pub fn load_jobs(path: &Path) -> Arc<DashMap<JobId, Job>> {
     let map = Arc::new(DashMap::new());
 
@@ -44,20 +41,17 @@ pub fn load_jobs(path: &Path) -> Arc<DashMap<JobId, Job>> {
     map
 }
 
-/// Persist the current job map to disk as a JSON array.
 pub fn save_jobs(path: &Path, jobs: &DashMap<JobId, Job>) -> std::io::Result<()> {
     let entries: Vec<Job> = jobs.iter().map(|r| r.value().clone()).collect();
     let data = serde_json::to_string_pretty(&entries)
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
 
-    // Write to a temp file then rename for atomicity.
     let tmp = path.with_extension("json.tmp");
     std::fs::write(&tmp, data)?;
     std::fs::rename(&tmp, path)?;
     Ok(())
 }
 
-/// Spawn a background task that snapshots the job map at a fixed interval.
 pub fn spawn_snapshot_task(
     jobs: Arc<DashMap<JobId, Job>>,
     path: PathBuf,

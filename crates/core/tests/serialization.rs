@@ -51,6 +51,7 @@ fn gossip_envelope_roundtrips_through_bincode() {
         origin: PeerId([0x02; 32]),
         ttl: 3,
         payload: GossipMessage::JobAvailable(job),
+        signature: [0u8; 64],
     };
     let bytes = bincode::serde::encode_to_vec(&envelope, config::standard()).unwrap();
     let (recovered, _): (GossipEnvelope, _) =

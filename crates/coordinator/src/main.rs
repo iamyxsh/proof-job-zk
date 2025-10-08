@@ -75,7 +75,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         config,
     });
 
-    // Persist job state to disk every 5 seconds
     persistence::spawn_snapshot_task(jobs.clone(), snapshot_path, Duration::from_secs(5));
 
     let gossip_rx = state.gossip.subscribe();

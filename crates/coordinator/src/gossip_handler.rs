@@ -104,7 +104,6 @@ async fn handle_job_completed(state: &AppState, job_id: JobId, tx_hash: TxHash) 
         "received JobCompleted via gossip, verifying on-chain"
     );
 
-    // Require on-chain verification before trusting gossip completions
     let contract = match state.contract {
         Some(ref c) => c,
         None => {

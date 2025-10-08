@@ -5,6 +5,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use ed25519_dalek::SigningKey;
 use futures::{SinkExt, StreamExt};
 use lru::LruCache;
 use proof_core::{
@@ -46,6 +47,7 @@ struct ConnectionHandle {
 struct Inner {
     listener: TcpListener,
     our_peer_id: PeerId,
+    signing_key: SigningKey,
     config: GossipConfig,
     incoming_tx: mpsc::Sender<(GossipEnvelope, ConnectionId)>,
     incoming_rx: Mutex<Option<mpsc::Receiver<(GossipEnvelope, ConnectionId)>>>,
@@ -66,12 +68,14 @@ impl GossipNode {
         let (incoming_tx, incoming_rx) = mpsc::channel(256);
         let (subscriber_tx, _) = broadcast::channel(256);
         let seen_cap = NonZeroUsize::new(config.seen_cache_size).unwrap();
-        let our_peer_id = PeerId(rand::thread_rng().gen());
+        let signing_key = SigningKey::generate(&mut rand::thread_rng());
+        let our_peer_id = PeerId(signing_key.verifying_key().to_bytes());
 
         Ok(Self {
             inner: Arc::new(Inner {
                 listener,
                 our_peer_id,
+                signing_key,
                 config,
                 incoming_tx,
                 incoming_rx: Mutex::new(Some(incoming_rx)),
@@ -120,12 +124,14 @@ impl GossipNode {
     }
 
     pub async fn broadcast(&self, message: GossipMessage) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let envelope = GossipEnvelope {
+        let mut envelope = GossipEnvelope {
             id: self.generate_message_id(&message),
             origin: self.inner.our_peer_id,
             ttl: self.inner.config.max_ttl,
             payload: message,
+            signature: [0u8; 64],
         };
+        envelope.sign(&self.inner.signing_key);
 
         self.inner.seen.lock().await.put(envelope.id, ());
         self.send_to_peers(&envelope, None).await
@@ -165,6 +171,15 @@ impl GossipNode {
     }
 
     async fn process_incoming(&self, envelope: GossipEnvelope, source: ConnectionId) {
+        if !envelope.verify() {
+            tracing::warn!(
+                id = hex::encode(envelope.id.0),
+                origin = hex::encode(envelope.origin.0),
+                "dropping gossip message with invalid signature"
+            );
+            return;
+        }
+
         {
             let mut seen = self.inner.seen.lock().await;
             if seen.get(&envelope.id).is_some() {
@@ -222,7 +237,6 @@ impl GossipNode {
                                         let _ = incoming_tx.send((envelope, conn_id)).await;
                                     }
                                     Err(_) => {
-                                        // Malformed frame — drop this connection
                                         break;
                                     }
                                 }

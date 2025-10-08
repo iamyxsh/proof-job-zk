@@ -72,7 +72,7 @@ async fn indexer_detects_job_completed() {
 
     let worker_client = ContractClient::new(&rpc, addr, ANVIL_KEY_1).unwrap();
     worker_client
-        .submit_proof(job_id.0, &[55], &[], [0u8; 32])
+        .submit_proof(job_id.0, &[55], &[])
         .await
         .expect("submit_proof failed");
 
@@ -121,7 +121,7 @@ async fn indexer_handles_unknown_job() {
 
     let worker_client = ContractClient::new(&rpc, addr, ANVIL_KEY_1).unwrap();
     worker_client
-        .submit_proof(job_id, &[66], &[], [0u8; 32])
+        .submit_proof(job_id, &[66], &[])
         .await
         .expect("submit_proof failed");
 

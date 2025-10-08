@@ -408,7 +408,7 @@ async fn get_job_not_found_returns_404() {
 }
 
 #[tokio::test]
-async fn gossip_job_completed_updates_state() {
+async fn gossip_job_completed_rejected_without_contract() {
     let state = setup_test_coordinator().await;
     let gossip_addr = state.gossip.local_addr().unwrap();
     tokio::spawn({ let g = state.gossip.clone(); async move { g.run().await } });
@@ -432,12 +432,10 @@ async fn gossip_job_completed_updates_state() {
     sleep(Duration::from_millis(500)).await;
 
     let job = state.jobs.get(&job_id).unwrap();
-    match &job.job_status {
-        JobStatus::Completed { tx_hash: hash } => {
-            assert_eq!(*hash, tx_hash);
-        }
-        other => panic!("expected Completed, got {:?}", other),
-    }
+    assert!(
+        matches!(job.job_status, JobStatus::Pending),
+        "without a contract client, gossip completion should be rejected"
+    );
 }
 
 #[tokio::test]

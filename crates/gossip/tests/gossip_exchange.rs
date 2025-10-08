@@ -1,6 +1,7 @@
 use std::time::Duration;
 
 use alloy_primitives::Address;
+use ed25519_dalek::SigningKey;
 use gossip::gossip::{GossipConfig, GossipNode};
 use proof_core::{
     enums::{GossipMessage, JobStatus},
@@ -22,13 +23,18 @@ fn make_test_job() -> Job {
     }
 }
 
-fn make_test_envelope() -> GossipEnvelope {
-    GossipEnvelope {
+fn make_signed_envelope() -> GossipEnvelope {
+    let key = SigningKey::generate(&mut rand::thread_rng());
+    let origin = PeerId(key.verifying_key().to_bytes());
+    let mut envelope = GossipEnvelope {
         id: MessageId([0x01; 32]),
-        origin: PeerId([0xBB; 32]),
+        origin,
         ttl: 3,
         payload: GossipMessage::JobAvailable(make_test_job()),
-    }
+        signature: [0u8; 64],
+    };
+    envelope.sign(&key);
+    envelope
 }
 
 fn config() -> GossipConfig {
@@ -54,7 +60,7 @@ async fn two_nodes_can_exchange_message() {
     node_b.connect(addr_a).await.unwrap();
     sleep(Duration::from_millis(100)).await;
 
-    let envelope = make_test_envelope();
+    let envelope = make_signed_envelope();
     node_b.send(envelope.clone()).await.unwrap();
 
     let received = timeout(Duration::from_secs(1), rx_a.recv())
@@ -114,7 +120,7 @@ async fn duplicate_messages_are_dropped() {
     node_a.connect(addr_b).await.unwrap();
     sleep(Duration::from_millis(100)).await;
 
-    let envelope = make_test_envelope();
+    let envelope = make_signed_envelope();
     node_a.send(envelope.clone()).await.unwrap();
     node_a.send(envelope.clone()).await.unwrap();
 
@@ -145,8 +151,16 @@ async fn ttl_one_not_forwarded() {
     node_c.connect(addr_b).await.unwrap();
     sleep(Duration::from_millis(100)).await;
 
-    let mut envelope = make_test_envelope();
-    envelope.ttl = 1;
+    let key = SigningKey::generate(&mut rand::thread_rng());
+    let origin = PeerId(key.verifying_key().to_bytes());
+    let mut envelope = GossipEnvelope {
+        id: MessageId([0x01; 32]),
+        origin,
+        ttl: 1,
+        payload: GossipMessage::JobAvailable(make_test_job()),
+        signature: [0u8; 64],
+    };
+    envelope.sign(&key);
     node_a.send(envelope).await.unwrap();
 
     let _ = timeout(Duration::from_millis(500), rx_b.recv())
@@ -155,4 +169,36 @@ async fn ttl_one_not_forwarded() {
 
     let result = timeout(Duration::from_millis(500), rx_c.recv()).await;
     assert!(result.is_err(), "TTL=1 message should not reach C");
+}
+
+#[tokio::test]
+async fn unsigned_messages_are_rejected() {
+    let node_a = GossipNode::new(config()).await.unwrap();
+    let addr_a = node_a.local_addr().unwrap();
+    let mut rx_a = node_a.subscribe();
+    tokio::spawn({
+        let n = node_a.clone();
+        async move { n.run().await }
+    });
+
+    let node_b = GossipNode::new(config()).await.unwrap();
+    tokio::spawn({
+        let n = node_b.clone();
+        async move { n.run().await }
+    });
+
+    node_b.connect(addr_a).await.unwrap();
+    sleep(Duration::from_millis(100)).await;
+
+    let unsigned = GossipEnvelope {
+        id: MessageId([0x02; 32]),
+        origin: PeerId([0xBB; 32]),
+        ttl: 3,
+        payload: GossipMessage::JobAvailable(make_test_job()),
+        signature: [0u8; 64],
+    };
+    node_b.send(unsigned).await.unwrap();
+
+    let result = timeout(Duration::from_millis(500), rx_a.recv()).await;
+    assert!(result.is_err(), "unsigned message should be rejected");
 }
