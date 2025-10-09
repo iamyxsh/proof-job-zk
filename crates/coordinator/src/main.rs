@@ -7,6 +7,7 @@ use coordinator::api;
 use coordinator::config::CoordinatorConfig;
 use coordinator::gossip_handler::run_gossip_handler;
 use coordinator::persistence;
+use coordinator::rebroadcast::run_pending_rebroadcast;
 use coordinator::AppState;
 use gossip::gossip::{GossipConfig, GossipNode};
 use indexer::{create_indexer, IndexerConfig};
@@ -79,6 +80,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     let gossip_rx = state.gossip.subscribe();
     tokio::spawn(run_gossip_handler(state.clone(), gossip_rx));
+    tokio::spawn(run_pending_rebroadcast(state.clone(), Duration::from_secs(5)));
 
     if let (Some(rpc), Some(addr)) = (&state.config.rpc_url, &state.config.contract_address) {
         let registry_address: Address = addr

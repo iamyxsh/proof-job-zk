@@ -2,6 +2,7 @@ pub mod api;
 pub mod config;
 pub mod gossip_handler;
 pub mod persistence;
+pub mod rebroadcast;
 
 use std::sync::Arc;
 

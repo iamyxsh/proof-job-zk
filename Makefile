@@ -108,8 +108,13 @@ demo:
 	RPC_URL=http://127.0.0.1:8545 CONTRACT_ADDRESS=$$REGISTRY_ADDRESS PRIVATE_KEY=$(ANVIL_PRIVATE_KEY) \
 		RUST_LOG=coordinator=info,indexer=info,gossip=warn \
 		cargo run --release -p coordinator & \
-	PIDS="$$PIDS $$!"; sleep 3; \
-	if ! curl -s http://127.0.0.1:8080/health > /dev/null 2>&1; then echo "Coordinator failed"; exit 1; fi; \
+	PIDS="$$PIDS $$!"; \
+	echo "    Waiting for coordinator to start..."; \
+	for i in $$(seq 1 60); do \
+		if curl -s http://127.0.0.1:8080/health > /dev/null 2>&1; then break; fi; \
+		if [ "$$i" -eq 60 ]; then echo "Coordinator failed to start"; exit 1; fi; \
+		sleep 2; \
+	done; \
 	echo "    Coordinator running"; \
 	\
 	echo "[2] Starting Worker 1..."; \
