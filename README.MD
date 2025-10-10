@@ -51,7 +51,7 @@ make check-status JOB_ID=0x...
 ```
 1. User POST /jobs to Coordinator
 2. Coordinator calls JobRegistry.submitJob() on-chain (locks ETH)
-3. Coordinator broadcasts JobAvailable via gossip
+3. Coordinator broadcasts JobAvailable via gossip (and re-broadcasts periodically for late joiners)
 4. Workers receive job, one claims it (first-wins arbitration)
 5. Winning worker generates ZK proof using RISC Zero
 6. Worker calls JobRegistry.submitProof() on-chain
@@ -154,9 +154,8 @@ Environment variables:
 RISC0_DEV_MODE=1 cargo test --workspace
 
 # E2E test (requires Anvil running + contract deployed)
-./scripts/setup.sh
-source .env
-RUN_E2E=1 RISC0_DEV_MODE=1 cargo test -p e2e full_e2e_success_criteria -- --nocapture
+make setup
+make test-e2e
 ```
 
 ## Architecture Notes
